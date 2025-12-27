@@ -604,7 +604,7 @@ const server = http.createServer(app);
 // });
 const io = new Server(server, {
   cors: {
-    origin: "*", // OR your frontend Render URL later
+    origin: "https://chat-front-daxb.onrender.com", // OR your frontend Render URL later
     methods: ["GET", "POST"],
   },
 });
