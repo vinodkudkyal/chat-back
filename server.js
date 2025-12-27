@@ -407,6 +407,188 @@
 
 
 
+// const express = require("express");
+// const http = require("http");
+// const { Server } = require("socket.io");
+// const mongoose = require("mongoose");
+// const cors = require("cors");
+// require("dotenv").config();
+
+// const app = express();
+// const server = http.createServer(app);
+// const io = new Server(server, {
+//   cors: { origin: "http://localhost:5173" },
+// });
+
+// app.use(cors());
+// app.use(express.json());
+
+// /* ---------------- MongoDB ---------------- */
+
+// mongoose
+//   .connect(process.env.MONGO_URI)
+//   .then(() => console.log("✅ MongoDB Connected"))
+//   .catch(console.error);
+
+// /* ---------------- Schemas ---------------- */
+
+// const userSchema = new mongoose.Schema({
+//   username: { type: String, unique: true },
+//   name: String,
+//   password: String,
+
+//   // ✅ IMPORTANT FIX
+//   rooms: {
+//     type: [String],
+//     default: [],
+//   },
+// });
+
+// const conversationSchema = new mongoose.Schema({
+//   roomId: String,
+//   messages: [
+//     {
+//       sender: String,
+//       text: String,
+//       timestamp: { type: Date, default: Date.now },
+//     },
+//   ],
+// });
+
+// const User = mongoose.model("User", userSchema);
+// const Conversation = mongoose.model("Conversation", conversationSchema);
+
+// /* ---------------- Admin ---------------- */
+
+// const ADMIN = {
+//   username: "vinodadmin@gmail.com",
+//   password: "viru@3045",
+// };
+
+// app.post("/admin/login", (req, res) => {
+//   const { username, password } = req.body;
+//   if (username === ADMIN.username && password === ADMIN.password) {
+//     return res.json({ role: "admin" });
+//   }
+//   res.status(401).json({ message: "Invalid admin credentials" });
+// });
+
+// /* ---------------- Create User ---------------- */
+
+// app.post("/admin/create-user", async (req, res) => {
+//   try {
+//     const { username, name, password, rooms } = req.body;
+
+//     if (!username || !password) {
+//       return res.status(400).json({ message: "Username & password required" });
+//     }
+
+//     const exists = await User.findOne({ username });
+//     if (exists) {
+//       return res.status(400).json({ message: "User already exists" });
+//     }
+
+//     const user = await User.create({
+//       username,
+//       name,
+//       password,
+//       rooms: Array.isArray(rooms) ? rooms : [],
+//     });
+
+//     console.log("✅ USER CREATED:", user.username);
+//     res.json({ message: "User created successfully" });
+//   } catch (err) {
+//     console.error("❌ CREATE USER ERROR:", err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+
+// /* ---------------- Get All Users ---------------- */
+
+// app.get("/admin/users", async (req, res) => {
+//   const users = await User.find({}, { password: 0 });
+//   console.log("📋 ADMIN USERS:", users.length);
+//   res.json(users);
+// });
+
+// /* ---------------- Add Room ---------------- */
+
+// app.post("/admin/add-room", async (req, res) => {
+//   const { username, roomId } = req.body;
+
+//   const user = await User.findOne({ username });
+//   if (!user) return res.status(404).json({ message: "User not found" });
+
+//   if (!user.rooms.includes(roomId)) {
+//     user.rooms.push(roomId);
+//     await user.save();
+//   }
+
+//   res.json({ message: "Room added" });
+// });
+
+// /* ---------------- User Login ---------------- */
+
+// app.post("/login", async (req, res) => {
+//   const { username, password } = req.body;
+
+//   const user = await User.findOne({ username, password });
+//   if (!user) return res.status(401).json({ message: "Invalid credentials" });
+
+//   res.json({
+//     username: user.username,
+//     name: user.name,
+//     rooms: user.rooms,
+//   });
+// });
+
+// /* ---------------- Room APIs ---------------- */
+
+// app.get("/room-users/:roomId", async (req, res) => {
+//   const users = await User.find(
+//     { rooms: req.params.roomId },
+//     { password: 0 }
+//   );
+//   res.json(users);
+// });
+
+// app.get("/messages/:roomId", async (req, res) => {
+//   let convo = await Conversation.findOne({ roomId: req.params.roomId });
+//   if (!convo) convo = await Conversation.create({ roomId, messages: [] });
+//   res.json(convo.messages);
+// });
+
+// /* ---------------- Socket ---------------- */
+
+// io.on("connection", (socket) => {
+//   socket.on("joinRoom", ({ roomId }) => {
+//     socket.join(roomId);
+//   });
+
+
+//   socket.on("sendGroupMessage", async ({ roomId, sender, text }) => {
+//     let convo = await Conversation.findOne({ roomId });
+//     if (!convo) convo = await Conversation.create({ roomId, messages: [] });
+
+//     const msg = { sender, text };
+//     convo.messages.push(msg);
+//     await convo.save();
+
+//     io.to(roomId).emit("receiveGroupMessage", msg);
+//   });
+
+
+//   socket.on("sendPrivateMessage", ({ sender, receiver, text }) => {
+//     io.emit("receivePrivateMessage", { sender, receiver, text });
+//   });
+// });
+
+// server.listen(5000, () =>
+//   console.log("🚀 Server running on http://localhost:5000")
+// );
+
+
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -436,12 +618,12 @@ const userSchema = new mongoose.Schema({
   username: { type: String, unique: true },
   name: String,
   password: String,
+  rooms: { type: [String], default: [] },
+});
 
-  // ✅ IMPORTANT FIX
-  rooms: {
-    type: [String],
-    default: [],
-  },
+const roomSchema = new mongoose.Schema({
+  roomId: { type: String, unique: true },
+  passcode: String,
 });
 
 const conversationSchema = new mongoose.Schema({
@@ -455,7 +637,25 @@ const conversationSchema = new mongoose.Schema({
   ],
 });
 
+const privateConversationSchema = new mongoose.Schema({
+  users: [String], // ["user1", "user2"] sorted
+  messages: [
+    {
+      sender: String,
+      text: String,
+      timestamp: { type: Date, default: Date.now },
+    },
+  ],
+});
+
+const PrivateConversation = mongoose.model(
+  "PrivateConversation",
+  privateConversationSchema
+);
+
+
 const User = mongoose.model("User", userSchema);
+const Room = mongoose.model("Room", roomSchema);
 const Conversation = mongoose.model("Conversation", conversationSchema);
 
 /* ---------------- Admin ---------------- */
@@ -473,67 +673,74 @@ app.post("/admin/login", (req, res) => {
   res.status(401).json({ message: "Invalid admin credentials" });
 });
 
-/* ---------------- Create User ---------------- */
-
+/* ---------- CREATE USER ---------- */
 app.post("/admin/create-user", async (req, res) => {
-  try {
-    const { username, name, password, rooms } = req.body;
+  const { username, name, password } = req.body;
 
-    if (!username || !password) {
-      return res.status(400).json({ message: "Username & password required" });
-    }
+  if (!username || !password)
+    return res.status(400).json({ message: "Missing fields" });
 
-    const exists = await User.findOne({ username });
-    if (exists) {
-      return res.status(400).json({ message: "User already exists" });
-    }
+  const exists = await User.findOne({ username });
+  if (exists)
+    return res.status(400).json({ message: "User already exists" });
 
-    const user = await User.create({
-      username,
-      name,
-      password,
-      rooms: Array.isArray(rooms) ? rooms : [],
-    });
-
-    console.log("✅ USER CREATED:", user.username);
-    res.json({ message: "User created successfully" });
-  } catch (err) {
-    console.error("❌ CREATE USER ERROR:", err);
-    res.status(500).json({ message: "Server error" });
-  }
+  await User.create({ username, name, password });
+  res.json({ message: "User created" });
 });
 
-/* ---------------- Get All Users ---------------- */
+/* ---------- CREATE ROOM ---------- */
+app.post("/admin/create-room", async (req, res) => {
+  const { roomId, passcode } = req.body;
 
-app.get("/admin/users", async (req, res) => {
-  const users = await User.find({}, { password: 0 });
-  console.log("📋 ADMIN USERS:", users.length);
-  res.json(users);
+  if (!roomId || !passcode)
+    return res.status(400).json({ message: "Missing fields" });
+
+  const exists = await Room.findOne({ roomId });
+  if (exists)
+    return res.status(400).json({ message: "Room already exists" });
+
+  await Room.create({ roomId, passcode });
+  res.json({ message: "Room created" });
 });
 
-/* ---------------- Add Room ---------------- */
-
-app.post("/admin/add-room", async (req, res) => {
+/* ---------- ASSIGN ROOM TO USER ---------- */
+app.post("/admin/assign-room", async (req, res) => {
   const { username, roomId } = req.body;
 
   const user = await User.findOne({ username });
-  if (!user) return res.status(404).json({ message: "User not found" });
+  const room = await Room.findOne({ roomId });
+
+  if (!user || !room)
+    return res.status(404).json({ message: "User or Room not found" });
 
   if (!user.rooms.includes(roomId)) {
     user.rooms.push(roomId);
     await user.save();
   }
 
-  res.json({ message: "Room added" });
+  res.json({ message: "Room assigned" });
 });
 
-/* ---------------- User Login ---------------- */
+/* ---------- LIST USERS ---------- */
+app.get("/admin/users", async (req, res) => {
+  const users = await User.find({}, { password: 0 });
+  res.json(users);
+});
+
+/* ---------- LIST ROOMS ---------- */
+app.get("/admin/rooms", async (req, res) => {
+  const rooms = await Room.find({}, { passcode: 0 });
+  res.json(rooms);
+});
+
+/* ---------------- USER LOGIN ---------------- */
 
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
   const user = await User.findOne({ username, password });
-  if (!user) return res.status(401).json({ message: "Invalid credentials" });
+  if (!user)
+    return res.status(401).json({ message: "Invalid credentials" });
 
   res.json({
     username: user.username,
@@ -542,7 +749,21 @@ app.post("/login", async (req, res) => {
   });
 });
 
-/* ---------------- Room APIs ---------------- */
+/* ---------- VERIFY ROOM PASSCODE ---------- */
+app.post("/verify-room", async (req, res) => {
+  const { roomId, passcode } = req.body;
+
+  const room = await Room.findOne({ roomId });
+  if (!room)
+    return res.status(404).json({ message: "Room not found" });
+
+  if (room.passcode !== passcode)
+    return res.status(401).json({ message: "Invalid passcode" });
+
+  res.json({ message: "Access granted" });
+});
+
+/* ---------------- ROOM DATA ---------------- */
 
 app.get("/room-users/:roomId", async (req, res) => {
   const users = await User.find(
@@ -552,19 +773,45 @@ app.get("/room-users/:roomId", async (req, res) => {
   res.json(users);
 });
 
+// 🔄 Refresh user rooms (LIVE DATA)
+app.get("/user/:username", async (req, res) => {
+  const user = await User.findOne(
+    { username: req.params.username },
+    { password: 0 }
+  );
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  res.json({
+    username: user.username,
+    name: user.name,
+    rooms: user.rooms,
+  });
+});
+
+
+
 app.get("/messages/:roomId", async (req, res) => {
   let convo = await Conversation.findOne({ roomId: req.params.roomId });
   if (!convo) convo = await Conversation.create({ roomId, messages: [] });
   res.json(convo.messages);
 });
 
-/* ---------------- Socket ---------------- */
+app.get("/private-messages/:u1/:u2", async (req, res) => {
+  const users = [req.params.u1, req.params.u2].sort();
+  const convo = await PrivateConversation.findOne({ users });
+  res.json(convo ? convo.messages : []);
+});
+
+
+/* ---------------- SOCKET ---------------- */
 
 io.on("connection", (socket) => {
   socket.on("joinRoom", ({ roomId }) => {
     socket.join(roomId);
   });
-
 
   socket.on("sendGroupMessage", async ({ roomId, sender, text }) => {
     let convo = await Conversation.findOne({ roomId });
@@ -577,10 +824,25 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("receiveGroupMessage", msg);
   });
 
+  socket.on("sendPrivateMessage", async ({ sender, receiver, text }) => {
+    const users = [sender, receiver].sort();
 
-  socket.on("sendPrivateMessage", ({ sender, receiver, text }) => {
-    io.emit("receivePrivateMessage", { sender, receiver, text });
+    let convo = await PrivateConversation.findOne({ users });
+    if (!convo) {
+      convo = await PrivateConversation.create({ users, messages: [] });
+    }
+
+    const msg = { sender, text };
+    convo.messages.push(msg);
+    await convo.save();
+
+    io.emit("receivePrivateMessage", {
+      ...msg,
+      sender,
+      receiver,
+    });
   });
+
 });
 
 server.listen(5000, () =>
